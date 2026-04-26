@@ -1,6 +1,13 @@
-FROM --platform=$BUILDPLATFORM alpine:latest
+FROM alpine:latest
 
-# Install necessary packages: iproute2 includes `tc`
+# Εγκατάσταση απαραίτητων εργαλείων (iproute2 περιέχει το tc)
 RUN apk add --no-cache iproute2 iputils bash
 
-CMD /bin/sh
+WORKDIR /scripts
+
+# Αντιγραφή του script και δικαιώματα εκτέλεσης
+COPY tc_rules.sh .
+RUN chmod +x tc_rules.sh
+
+# Εκτέλεση του script
+CMD ["./tc_rules.sh"]

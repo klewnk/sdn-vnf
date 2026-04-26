@@ -1,3 +1,4 @@
+version: '3.8'
 name: 'mininet_vnf'
 
 services:
@@ -11,6 +12,7 @@ services:
             - NET_RAW
         environment:
             - NAT_INTF=eth0
+
     vnf_dns:
         image: vnf_dns:0.0.1
         build:
@@ -21,14 +23,19 @@ services:
             - NET_ADMIN
         volumes:
             - ./dns/Corefile:/etc/coredns/Corefile
+
     vnf_fw:
-        image: vnf_firewall:0.0.1
+        image: vnf_firewall:latest # <-- ΔΙΟΡΘΩΘΗΚΕ ΣΕ latest για να πάρει τους κανόνες σου!
         container_name: vnf_firewall
+        build:
+            context: ./firewall
+            dockerfile: Dockerfile.FIREWALL
         stdin_open: true
         tty: true
         cap_add:
             - NET_ADMIN
             - NET_RAW
+
     vnf_frr:
         image: vnf_frr:0.0.1
         container_name: vnf_frr
@@ -43,8 +50,9 @@ services:
         cap_add:
             - NET_ADMIN
             - NET_RAW
+
     vnf_tc:
-        image: vnf_tc:0.0.2
+        image: vnf_tc:latest # <-- ΔΙΟΡΘΩΘΗΚΕ ΣΕ latest για να πάρει τον τροχονόμο σου!
         container_name: vnf_tc
         build:
             context: ./tc
@@ -54,6 +62,7 @@ services:
         cap_add:
             - NET_ADMIN
             - NET_RAW
+
     vnf_lb:
         image: vnf_lb:0.0.1
         container_name: vnf_lb
@@ -62,11 +71,165 @@ services:
             dockerfile: Dockerfile.LB
         stdin_open: true
         tty: true
+
     lb_backend1:
         image: nginx:stable-alpine
         container_name: lb_backend1
         hostname: lb_backend1
+
     lb_backend2:
         image: nginx:stable-alpine
         container_name: lb_backend2
         hostname: lb_backend2
+
+    vnf_waf:
+        build:
+            context: ./waf
+            dockerfile: Dockerfile.waf
+        container_name: vnf_waf
+        environment:
+            - BACKEND=http://10.0.0.8:80
+            - PROXY_SSL=off
+            - PORT=8080
+            - PARANOIA=1
+        cap_add:
+             - NET_ADMIN
+
+    vnf_proxy:
+        image: vnf_proxy:0.0.1
+        container_name: vnf_proxy
+        build:
+            context: ./proxy
+            dockerfile: Dockerfile.Proxy
+        stdin_open: true
+        tty: true
+        cap_add:
+            - NET_ADMIN
+            - NET_RAW
+
+    vnf_ids:
+        image: vnf_ids:0.0.1
+        container_name: vnf_ids
+        build:
+            context: ./ids
+            dockerfile: Dockerfile.ids
+            network: host
+        stdin_open: true
+        tty: true
+        cap_add:
+            - NET_ADMIN
+            - NET_RAW
+
+# === ΤΑ 2 ΝΕΑ ΣΟΥ VNFS (FTP & HONEYPOT) ===
+    vnf_ftp:
+        image: vnf_ftp:latest
+        container_name: vnf_ftp
+        build:
+            context: ./ftp
+            dockerfile: Dockerfile.FTP
+        stdin_open: true
+        tty: true
+        
+    vnf_honeypot:
+        image: vnf_honeypot:latest
+        container_name: vnf_honeypot
+        build:
+            context: ./honeypot
+            dockerfile: Dockerfile.HONEYPOT
+        stdin_open: true
+        tty: true
+# ============================================
+
+    prometheus:
+        image: prom/prometheus:latest
+        container_name: prometheus
+        volumes:
+            - ./prometheus.yml:/etc/prometheus/prometheus.yml
+        ports:
+            - "9090:9090"
+    
+    cadvisor:
+        image: gcr.io/cadvisor/cadvisor:latest
+        container_name: cadvisor
+        volumes:
+            - /:/rootfs:ro
+            - /var/run:/var/run:ro
+            - /sys:/sys:ro
+            - /var/lib/docker/:/var/lib/docker:ro
+            - /dev/disk/:/dev/disk:ro
+        ports:
+            - "8080:8080"
+        privileged: true
+
+    grafana:
+        image: grafana/grafana:latest
+        container_name: grafana
+        ports:
+            - "3000:3000"
+        environment:
+            - GF_SECURITY_ADMIN_PASSWORD=admin
+        volumes:
+            - grafana_data:/var/lib/grafana
+
+    portainer:
+        image: portainer/portainer-ce:latest
+        container_name: portainer
+        restart: unless-stopped
+        ports:
+            - "9000:9000"
+        volumes:
+            - /var/run/docker.sock:/var/run/docker.sock
+            - portainer_data:/data
+
+
+    vnf_speedtest:
+        image: ghcr.io/librespeed/speedtest:latest
+        container_name: vnf_speedtest
+        ports:
+            - "8082:8080"  
+        environment:
+            - TZ=Europe/Athens
+            - TITLE=Kleon SDN Speedtest  
+        cap_add:
+            - NET_ADMIN
+        stdin_open: true
+        tty: true
+
+
+    vnf_monitor:
+        image: netdata/netdata:latest
+        container_name: vnf_monitor
+        hostname: netdata-vnf
+        ports:
+            - "19999:19999"
+        cap_add:
+            - SYS_PTRACE
+            - NET_ADMIN
+        security_opt:
+            - apparmor:unconfined
+        volumes:
+            - /proc:/host/proc:ro
+            - /sys:/host/sys:ro
+            - /var/run/docker.sock:/var/run/docker.sock:ro
+
+
+    vnf_storage:
+        image: vnf_storage:latest
+        build:
+            context: ./minio
+            dockerfile: Dockerfile.Storage
+        container_name: vnf_storage
+        hostname: minio
+        environment:
+            - MINIO_ROOT_USER=kleon
+            - MINIO_ROOT_PASSWORD=kleonpass
+        ports:
+            - "9001:9001"
+            - "9002:9000"  
+        cap_add:
+            - NET_ADMIN
+    
+
+volumes:
+    grafana_data:
+    portainer_data:

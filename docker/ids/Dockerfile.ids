@@ -1,0 +1,7 @@
+FROM alpine:latest
+
+RUN apk update && apk add snort
+
+COPY local.rules /etc/snort/rules/local.rules
+
+CMD ["tail", "-f", "/dev/null"]

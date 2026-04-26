@@ -1,0 +1,17 @@
+FROM alpine:latest
+RUN apk add --no-cache vsftpd
+
+# Ρυθμίσεις για να επιτρέπει απλή (ανώνυμη) σύνδεση
+RUN echo "anonymous_enable=YES" > /etc/vsftpd/vsftpd.conf && \
+    echo "local_enable=YES" >> /etc/vsftpd/vsftpd.conf && \
+    echo "seccomp_sandbox=NO" >> /etc/vsftpd/vsftpd.conf && \
+    echo "listen_port=21" >> /etc/vsftpd/vsftpd.conf
+
+# Φτιάχνουμε ένα ψεύτικο αρχείο για να υπάρχει κάτι να κατεβάσει ο χρήστης
+RUN mkdir -p /var/ftp/pub
+RUN echo "Welcome to the VNF FTP Server! This file proves the FTP works." > /var/ftp/pub/test_file.txt
+
+EXPOSE 21
+
+# Ξεκινάει τον server
+CMD ["vsftpd", "/etc/vsftpd/vsftpd.conf"]

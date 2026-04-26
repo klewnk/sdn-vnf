@@ -1,0 +1,1 @@
+alert icmp any any -> any any (msg:"[ALARM] POSSIBLE ICMP/PING FLOOD ATTACK DETECTED!"; sid:1000001; rev:1;)

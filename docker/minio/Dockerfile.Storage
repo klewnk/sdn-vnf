@@ -1,0 +1,3 @@
+FROM minio/minio:latest
+# Ξεκινάει τον server και το Console (το GUI)
+CMD ["server", "/data", "--console-address", ":9001"]

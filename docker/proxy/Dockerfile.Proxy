@@ -1,0 +1,13 @@
+FROM alpine:latest
+
+# Εγκατάσταση του προγράμματος Squid ΚΑΙ του iptables
+RUN apk update && apk add squid iptables
+
+# Αντιγράφουμε τους κανόνες
+COPY squid.conf /etc/squid/squid.conf
+
+# Δημιουργούμε τους φακέλους για το Caching
+RUN squid -z || true
+
+# Σβήνουμε το παλιό PID και μετά ξεκινάμε το Squid
+CMD sh -c "rm -f /var/run/squid.pid && squid -N -d 1 -f /etc/squid/squid.conf"

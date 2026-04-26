@@ -1,0 +1,11 @@
+FROM alpine:latest
+# Εγκαθιστάμε τα βασικά εργαλεία ΚΑΙ το εργαλείο του MinIO (mc)
+RUN apk add --no-cache netcat-openbsd bash curl
+RUN curl -O https://dl.min.io/client/mc/release/linux-amd64/mc && \
+    chmod +x mc && \
+    mv mc /usr/bin/
+
+WORKDIR /app
+COPY trap.sh .
+RUN chmod +x trap.sh
+CMD ["./trap.sh"]
