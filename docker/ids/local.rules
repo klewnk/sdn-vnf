@@ -1,1 +1,3 @@
-alert icmp any any -> any any (msg:"[ALARM] POSSIBLE ICMP/PING FLOOD ATTACK DETECTED!"; sid:1000001; rev:1;)
+# Packet-based Snort rules can be added here.
+# Proxy-policy and suspicious-DNS alerts are handled by the IDS monitor
+# scripts because Squid/CoreDNS logs are the authoritative event sources.

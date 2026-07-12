@@ -1,6 +1,6 @@
 FROM alpine:latest as builder
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl ca-certificates && update-ca-certificates
 
 RUN curl -L -o coredns.tgz https://github.com/coredns/coredns/releases/download/v1.12.1/coredns_1.12.1_linux_amd64.tgz
 RUN tar xvf coredns.tgz
@@ -17,8 +17,10 @@ RUN chmod +x ./coredns
 RUN mv coredns /usr/local/bin/
 
 COPY Corefile .
+COPY entrypoint.sh /usr/local/bin/dns-entrypoint.sh
+RUN chmod +x /usr/local/bin/dns-entrypoint.sh
 
 EXPOSE 53/udp
 EXPOSE 53/tcp
 
-CMD coredns -conf ./Corefile
+CMD ["/usr/local/bin/dns-entrypoint.sh"]

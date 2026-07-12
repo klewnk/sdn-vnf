@@ -1,13 +1,11 @@
 FROM alpine:latest
 
-# Εγκατάσταση του προγράμματος Squid ΚΑΙ του iptables
 RUN apk update && apk add squid iptables
 
-# Αντιγράφουμε τους κανόνες
 COPY squid.conf /etc/squid/squid.conf
+COPY entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
 
-# Δημιουργούμε τους φακέλους για το Caching
 RUN squid -z || true
+RUN chmod +x /usr/local/bin/proxy-entrypoint.sh
 
-# Σβήνουμε το παλιό PID και μετά ξεκινάμε το Squid
-CMD sh -c "rm -f /var/run/squid.pid && squid -N -d 1 -f /etc/squid/squid.conf"
+CMD ["/usr/local/bin/proxy-entrypoint.sh"]

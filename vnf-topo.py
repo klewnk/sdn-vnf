@@ -1,9 +1,13 @@
+# -*- coding: utf-8 -*-
 from mininet.net import Mininet
 from mininet.node import Controller
 from mininet.link import TCLink
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 import os
+
+def shell(cmd):
+    return os.popen(cmd).read().strip()
 
 def setupRouterVnf(router_default_route):
     eth1Ip = '10.0.0.2'
@@ -96,6 +100,28 @@ def setupIdsVnf(ids_default_route):
 
     return eth1Ip
 
+def setupIdsMirror(sourcePort='veth_br0'):
+    info('*** Setting up OVS mirror to IDS VNF\n')
+
+    idsIfIndex = shell("docker exec vnf_ids sh -c 'cat /sys/class/net/eth1/iflink' 2>/dev/null")
+    if not idsIfIndex:
+        info('*** IDS mirror skipped: could not find vnf_ids eth1 peer\n')
+        return
+
+    idsOvsPort = shell("""ip -o link | awk -F': ' '$1=="%s"{print $2}' | cut -d@ -f1""" % idsIfIndex)
+    if not idsOvsPort:
+        info('*** IDS mirror skipped: could not resolve OVS port for vnf_ids\n')
+        return
+
+    os.system('ovs-vsctl clear bridge br0 mirrors')
+    os.system(
+        'ovs-vsctl -- --id=@src get port "{0}" '
+        '-- --id=@ids get port "{1}" '
+        '-- --id=@m create mirror name=ids_mirror select-src-port=@src select-dst-port=@src output-port=@ids '
+        '-- set bridge br0 mirrors=@m'.format(sourcePort, idsOvsPort)
+    )
+    info('*** IDS mirror active on br0: {} -> {}\n'.format(sourcePort, idsOvsPort))
+
 def setupProxyVnf(proxy_default_route, prev_vnf_ip):
     eth1Ip = '10.0.0.10'
 
@@ -132,43 +158,16 @@ def setupWafVnf(waf_default_route, prev_vnf_ip):
 
     return eth1Ip
 
-# === ΝΕΑ VNFS ΠΟΥ ΠΡΟΣΘΕΣΑΜΕ ===
 
-def setupFtpVnf():
-    eth1Ip = '10.0.0.21'
-    info('*** Adding Docker FTP Server VNF\n')
-    # Το συνδέουμε απλά στο switch. Δεν χρειάζεται routing rules γιατί είναι προορισμός.
-    os.system('ovs-docker add-port br0 eth1 vnf_ftp --ipaddress={}/24'.format(eth1Ip))
-    return eth1Ip
+def setupCacheVnf():
+    eth1Ip = '10.0.0.30'
 
-def setupHoneypotVnf():
-    eth1Ip = '10.0.0.99'
-    info('*** Adding Docker Honeypot Trap VNF\n')
-    os.system('ovs-docker add-port br0 eth1 vnf_honeypot --ipaddress={}/24'.format(eth1Ip))
-    return eth1Ip
+    info('*** Adding Docker Edge Cache VNF\n')
+    os.system('ovs-docker add-port br0 eth1 vnf_cache --ipaddress={}/24'.format(eth1Ip))
 
-# ================================
-
-def setupSpeedtestVnf():
-    eth1Ip = '10.0.0.55'
-    info('*** Adding Docker Speedtest VNF\n')
-    os.system('ovs-docker add-port br0 eth1 vnf_speedtest --ipaddress={}/24'.format(eth1Ip))
     return eth1Ip
 
 
-
-def setupMonitorVnf():
-    eth1Ip = '10.0.0.60'
-    info('*** Adding Docker Real-time Monitor VNF\n')
-    os.system('ovs-docker add-port br0 eth1 vnf_monitor --ipaddress={}/24'.format(eth1Ip))
-    return eth1Ip
-
-
-def setupStorageVnf():
-    eth1Ip = '10.0.0.70'
-    info('*** Adding Docker Edge Storage VNF (MinIO)\n')
-    os.system('ovs-docker add-port br0 eth1 vnf_storage --ipaddress={}/24'.format(eth1Ip))
-    return eth1Ip    
 
 def topology():
     setLogLevel('info')
@@ -184,7 +183,7 @@ def topology():
     host3 = net.addHost('h3', ip='10.0.1.3/24')
 
     info('*** Adding switch\n')
-    switch = net.addSwitch('s1')
+    switch = net.addSwitch('s1', failMode='standalone')
 
     info('*** Creating links\n')
     net.addLink(host1, switch)
@@ -194,7 +193,7 @@ def topology():
     info('*** Starting network\n')
     net.start()
 
-    wafIp = setupWafVnf(waf_default_route='10.0.0.8', prev_vnf_ip='10.0.0.10')
+    setupWafVnf(waf_default_route='10.0.0.8', prev_vnf_ip='10.0.0.10')
     natIp = setupNatVnf(prev_vnf_ip='10.0.0.10') 
     proxyIp = setupProxyVnf(proxy_default_route=natIp, prev_vnf_ip='10.0.0.5')
     
@@ -205,14 +204,7 @@ def topology():
     (defaultRouteForEth1, defaultRouteForEth2) = setupRouterVnf(router_default_route=firewallIp)
     (dnsIp1, dnsIp2) = setupDNSVnf(dns_default_route=natIp)
     setupLbVnf()
-    
-    # Κλήση των 2 νέων VNFs
-    setupFtpVnf()
-    setupHoneypotVnf()
-    setupSpeedtestVnf()
-    setupMonitorVnf()
-    setupStorageVnf()
-
+    setupCacheVnf()
     os.system('ip link add veth_mininet type veth peer name veth_br0')
 
     info('*** Add port veth_mininet to s1\n')
@@ -233,13 +225,20 @@ def topology():
     os.system('ovs-vsctl add-port br1 veth_br1')
     os.system('ip link set veth_br1 up')
 
+    setupIdsMirror('veth_br0')
+
+    # Use the router as the host default gateway so traffic enters the full
+    # VNF chain instead of bypassing directly to the proxy.
     host1.cmd("ip route add default via {}".format(defaultRouteForEth1))
     host2.cmd("ip route add default via {}".format(defaultRouteForEth1))
     host3.cmd("ip route add default via {}".format(defaultRouteForEth2))
+
+    for host in (host1, host2, host3):
+        host.cmd('unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY')
     
     info('*** Setup DNS on hosts\n')
-    host1.cmd('rm /etc/resolv.conf')
-    host1.cmd('ln -s $(pwd)/resolv.conf /etc/resolv.conf')
+    # Mininet hosts share the host filesystem, so configure one reachable DNS VNF.
+    host1.cmd('echo nameserver {} > /etc/resolv.conf'.format(dnsIp1))
 
     info('*** Testing network\n')
     CLI(net)
@@ -249,6 +248,7 @@ def topology():
 
     info('*** Cleanup\n')
 
+    os.system('ovs-vsctl clear bridge br0 mirrors')
     os.system('ovs-vsctl del-port br0 veth_br0')
     os.system('ip link set veth_mininet down')
     os.system('ip link set veth_br0 down')
@@ -271,11 +271,6 @@ def topology():
     os.system('ovs-docker del-port br0 eth1 vnf_ids') 
     os.system('ovs-docker del-port br0 eth1 vnf_proxy') 
     os.system('ovs-docker del-port br0 eth1 vnf_waf')
-    
-    # Καθαρισμός των νέων VNFs όταν κλείνει το mininet
-    os.system('ovs-docker del-port br0 eth1 vnf_ftp')
-    os.system('ovs-docker del-port br0 eth1 vnf_honeypot')
-    os.system('ovs-docker del-port br0 eth1 vnf_speedtest')
-
+    os.system('ovs-docker del-port br0 eth1 vnf_cache')
 if __name__ == '__main__':
     topology()

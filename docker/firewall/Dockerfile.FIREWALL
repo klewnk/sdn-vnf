@@ -1,14 +1,10 @@
 FROM alpine:latest
 
-# Εγκατάσταση απαραίτητων εργαλείων
 RUN apk add --no-cache iptables iproute2 tcpdump
 
-# Δημιουργία φακέλου για τα scripts
 WORKDIR /scripts
 
-# Αντιγραφή του script μέσα στο image
 COPY firewall_rules.sh .
 RUN chmod +x firewall_rules.sh
 
-# ΕΚΤΕΛΕΣΗ: Τρέχει το script και μετά κρατάει το container ανοιχτό
 CMD ["/bin/sh", "-c", "./firewall_rules.sh && tail -f /dev/null"]

@@ -1,0 +1,9 @@
+FROM nginx:stable-alpine
+
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY entrypoint.sh /usr/local/bin/cache-entrypoint.sh
+RUN chmod +x /usr/local/bin/cache-entrypoint.sh
+
+EXPOSE 80
+
+CMD ["/usr/local/bin/cache-entrypoint.sh"]

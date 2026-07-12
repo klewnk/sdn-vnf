@@ -1,0 +1,12 @@
+FROM nginx:stable-alpine
+
+RUN printf '%s\n' \
+    '<!doctype html>' \
+    '<html><body>' \
+    '<h1>Cache Origin Server</h1>' \
+    '<p>This server represents the original content source behind the Edge Cache VNF.</p>' \
+    '</body></html>' \
+    > /usr/share/nginx/html/index.html && \
+    dd if=/dev/zero of=/usr/share/nginx/html/bigfile.dat bs=1M count=5
+
+EXPOSE 80

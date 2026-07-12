@@ -1,7 +1,12 @@
 FROM alpine:latest
 
-RUN apk update && apk add snort
+RUN apk update && apk add snort iproute2 tcpdump
 
 COPY local.rules /etc/snort/rules/local.rules
+COPY proxy_block_monitor.sh /usr/local/bin/proxy_block_monitor.sh
+COPY dns_query_monitor.sh /usr/local/bin/dns_query_monitor.sh
+COPY waf_block_monitor.sh /usr/local/bin/waf_block_monitor.sh
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/proxy_block_monitor.sh /usr/local/bin/dns_query_monitor.sh /usr/local/bin/waf_block_monitor.sh /usr/local/bin/entrypoint.sh
 
-CMD ["tail", "-f", "/dev/null"]
+CMD ["/usr/local/bin/entrypoint.sh"]
