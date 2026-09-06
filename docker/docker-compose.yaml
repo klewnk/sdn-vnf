@@ -3,15 +3,18 @@ name: 'mininet_vnf'
 
 services:
     vnf_nat:
-        image: vnf_nat:0.0.3
+        image: vnf_nat:0.0.4
+        build:
+            context: ./nat
+            dockerfile: Dockerfile.NAT
         container_name: vnf_nat
         stdin_open: true
         tty: true
         cap_add:
             - NET_ADMIN
             - NET_RAW
-        environment:
-            - NAT_INTF=eth0
+        sysctls:
+            net.ipv4.ip_forward: "1"
 
     vnf_dns:
         image: vnf_dns:0.0.1
@@ -40,6 +43,8 @@ services:
         cap_add:
             - NET_ADMIN
             - NET_RAW
+        sysctls:
+            net.ipv4.ip_forward: "1"
 
     vnf_frr:
         image: vnf_frr:0.0.1
@@ -55,6 +60,8 @@ services:
         cap_add:
             - NET_ADMIN
             - NET_RAW
+        sysctls:
+            net.ipv4.ip_forward: "1"
 
     vnf_tc:
         image: vnf_tc:latest
@@ -67,6 +74,8 @@ services:
         cap_add:
             - NET_ADMIN
             - NET_RAW
+        sysctls:
+            net.ipv4.ip_forward: "1"
 
     vnf_lb:
         image: vnf_lb:0.0.1
@@ -82,14 +91,18 @@ services:
         container_name: lb_backend1
         hostname: lb_backend1
         volumes:
+            - ./lb/backend1/nginx.conf:/etc/nginx/conf.d/default.conf:ro
             - ./lb/backend1/index.html:/usr/share/nginx/html/index.html:ro
+            - ./lb/backend1/slow.txt:/usr/share/nginx/html/slow.txt:ro
 
     lb_backend2:
         image: nginx:stable-alpine
         container_name: lb_backend2
         hostname: lb_backend2
         volumes:
+            - ./lb/backend2/nginx.conf:/etc/nginx/conf.d/default.conf:ro
             - ./lb/backend2/index.html:/usr/share/nginx/html/index.html:ro
+            - ./lb/backend2/slow.txt:/usr/share/nginx/html/slow.txt:ro
 
     vnf_waf:
         build:

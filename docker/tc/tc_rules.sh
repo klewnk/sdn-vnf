@@ -2,6 +2,8 @@
 
 IFACE=${IFACE:-eth1}
 
+echo 1 > /proc/sys/net/ipv4/ip_forward
+
 echo "Waiting for $IFACE to appear..."
 while ! ip link show "$IFACE" > /dev/null 2>&1; do
   sleep 1

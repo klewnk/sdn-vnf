@@ -9,6 +9,39 @@ import os
 def shell(cmd):
     return os.popen(cmd).read().strip()
 
+def preflightCleanup():
+    info('*** Preflight cleanup\n')
+    os.system('ovs-vsctl --may-exist add-br br0')
+    os.system('ovs-vsctl --may-exist add-br br1')
+    os.system('ovs-vsctl --if-exists del-port br0 veth_br0')
+    os.system('ovs-vsctl --if-exists del-port br1 veth_br1')
+    os.system('ip link del veth_mininet 2>/dev/null')
+    os.system('ip link del veth_mininet1 2>/dev/null')
+
+def enableForwarding(container):
+    os.system('docker exec {} sysctl -w net.ipv4.ip_forward=1 2>/dev/null'.format(container))
+
+def setupHostEgress():
+    info('*** Configuring host forwarding for lab egress\n')
+    os.system('sysctl -w net.ipv4.ip_forward=1')
+    wan_if = shell("ip -4 route show default | awk '{print $5}' | head -1")
+    if not wan_if:
+        info('*** Host egress skipped: no default route\n')
+        return
+    for cidr in ('10.0.0.0/24', '10.0.1.0/24', '172.18.0.0/16'):
+        check = 'iptables -t nat -C POSTROUTING -s {} -o {} -j MASQUERADE'.format(cidr, wan_if)
+        add = 'iptables -t nat -A POSTROUTING -s {} -o {} -j MASQUERADE'.format(cidr, wan_if)
+        os.system('{} 2>/dev/null || {}'.format(check, add))
+    for dev in ('br0', 'br1'):
+        os.system('iptables -C FORWARD -i {} -j ACCEPT 2>/dev/null || iptables -A FORWARD -i {} -j ACCEPT'.format(dev, dev))
+        os.system('iptables -C FORWARD -o {} -j ACCEPT 2>/dev/null || iptables -A FORWARD -o {} -j ACCEPT'.format(dev, dev))
+
+def setupNatEgress():
+    enableForwarding('vnf_nat')
+    os.system('docker exec vnf_nat iptables -P FORWARD ACCEPT')
+    os.system('docker exec vnf_nat iptables -t nat -F')
+    os.system('docker exec vnf_nat iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE')
+
 def setupRouterVnf(router_default_route):
     eth1Ip = '10.0.0.2'
     eth2Ip = '10.0.1.2'
@@ -19,6 +52,7 @@ def setupRouterVnf(router_default_route):
 
     os.system('docker exec vnf_frr ip route del default')
     os.system('docker exec vnf_frr ip route add default via {}'.format(router_default_route))
+    enableForwarding('vnf_frr')
 
     return (eth1Ip, eth2Ip)
 
@@ -35,6 +69,7 @@ def setupFirewallVnf(firewall_default_route, prev_vnf_ip):
     subnet2Gateway = prev_vnf_ip
     subnet2IpRouteCmd = 'ip route add {} via {} dev eth1'.format(subnet2IpRange, subnet2Gateway)
     os.system('docker exec vnf_firewall {}'.format(subnet2IpRouteCmd))
+    enableForwarding('vnf_firewall')
 
     return eth1Ip
 
@@ -48,6 +83,7 @@ def setupNatVnf(prev_vnf_ip):
     subnet2Gateway = prev_vnf_ip
     subnet2IpRouteCmd = 'ip route add {} via {} dev eth1'.format(subnet2IpRange, subnet2Gateway)
     os.system('docker exec vnf_nat {}'.format(subnet2IpRouteCmd))
+    setupNatEgress()
 
     return eth1Ip
 
@@ -64,6 +100,7 @@ def setupTCVnf(tc_default_route, prev_vnf_ip):
     subnet2Gateway = prev_vnf_ip
     subnet2IpRouteCmd = 'ip route add {} via {} dev eth1'.format(subnet2IpRange, subnet2Gateway)
     os.system('docker exec vnf_tc {}'.format(subnet2IpRouteCmd))
+    enableForwarding('vnf_tc')
 
     return eth1Ip
 
@@ -89,14 +126,13 @@ def setupLbVnf():
     os.system('ovs-docker add-port br0 eth1 vnf_lb --ipaddress={}/24'.format(eth1Ip))
     os.system('ovs-docker add-port br1 eth2 vnf_lb --ipaddress={}/24'.format(eth2Ip))
 
-def setupIdsVnf(ids_default_route):
+def setupIdsVnf():
     eth1Ip = '10.0.0.9'
 
     info('*** Adding Docker IDS (Snort) VNF\n')
     os.system('ovs-docker add-port br0 eth1 vnf_ids --ipaddress={}/24'.format(eth1Ip))
-
-    os.system('docker exec vnf_ids ip route del default')
-    os.system('docker exec vnf_ids ip route add default via {}'.format(ids_default_route))
+    # IDS is passive: chain traffic is mirrored from br0, not routed through Snort.
+    os.system('docker exec vnf_ids ip route replace default via 10.0.0.2 dev eth1')
 
     return eth1Ip
 
@@ -129,6 +165,7 @@ def setupProxyVnf(proxy_default_route, prev_vnf_ip):
     os.system('ovs-docker add-port br0 eth1 vnf_proxy --ipaddress={}/24'.format(eth1Ip))
 
     os.system('docker exec vnf_proxy sysctl -w net.ipv4.ip_forward=1')
+    os.system('docker exec vnf_proxy iptables -P FORWARD ACCEPT')
 
     os.system('docker exec vnf_proxy iptables -t nat -A PREROUTING -p tcp --dport 80 -j REDIRECT --to-port 3129')
     os.system('docker exec vnf_proxy ip route del default')
@@ -147,14 +184,13 @@ def setupWafVnf(waf_default_route, prev_vnf_ip):
     info('*** Adding Docker WAF (ModSecurity) VNF\n')
     os.system('ovs-docker add-port br0 eth1 vnf_waf --ipaddress={}/24'.format(eth1Ip))
 
-    os.system('docker exec vnf_waf sysctl -w net.ipv4.ip_forward=1')
-
-    os.system('docker exec vnf_waf ip route del default')
-    os.system('docker exec vnf_waf ip route add default via {}'.format(waf_default_route))
-
-    subnet2IpRange = '10.0.1.0/24'
-    subnet2Gateway = prev_vnf_ip
-    os.system('docker exec vnf_waf ip route add {} via {} dev eth1'.format(subnet2IpRange, subnet2Gateway))
+    os.system(
+        'docker exec vnf_waf sh -c "command -v ip >/dev/null && '
+        'ip route replace default via {} dev eth1 && '
+        'ip route replace {} via {} dev eth1"'.format(
+            waf_default_route, '10.0.1.0/24', prev_vnf_ip
+        )
+    )
 
     return eth1Ip
 
@@ -171,6 +207,7 @@ def setupCacheVnf():
 
 def topology():
     setLogLevel('info')
+    preflightCleanup()
 
     net = Mininet(controller=Controller, link=TCLink)
 
@@ -193,14 +230,15 @@ def topology():
     info('*** Starting network\n')
     net.start()
 
+    # Service chain (routing): Router -> Firewall -> TC -> Proxy -> NAT
+    # IDS inspects the same br0 traffic via OVS mirror (passive SFC hop).
     setupWafVnf(waf_default_route='10.0.0.8', prev_vnf_ip='10.0.0.10')
-    natIp = setupNatVnf(prev_vnf_ip='10.0.0.10') 
+    natIp = setupNatVnf(prev_vnf_ip='10.0.0.10')
     proxyIp = setupProxyVnf(proxy_default_route=natIp, prev_vnf_ip='10.0.0.5')
-    
-    tcIp = setupTCVnf(tc_default_route=proxyIp, prev_vnf_ip='10.0.0.9')
-    idsIp = setupIdsVnf(ids_default_route=tcIp)
-    firewallIp = setupFirewallVnf(firewall_default_route=idsIp, prev_vnf_ip='10.0.0.2')
- 
+    tcIp = setupTCVnf(tc_default_route=proxyIp, prev_vnf_ip='10.0.0.3')
+    setupIdsVnf()
+    firewallIp = setupFirewallVnf(firewall_default_route=tcIp, prev_vnf_ip='10.0.0.2')
+
     (defaultRouteForEth1, defaultRouteForEth2) = setupRouterVnf(router_default_route=firewallIp)
     (dnsIp1, dnsIp2) = setupDNSVnf(dns_default_route=natIp)
     setupLbVnf()
@@ -226,9 +264,11 @@ def topology():
     os.system('ip link set veth_br1 up')
 
     setupIdsMirror('veth_br0')
+    setupHostEgress()
 
-    # Use the router as the host default gateway so traffic enters the full
-    # VNF chain instead of bypassing directly to the proxy.
+    # Service chain for outbound traffic:
+    # h1/h2 -> router -> firewall -> TC -> proxy -> NAT -> host egress
+    # IDS inspects the same br0 traffic via OVS mirroring.
     host1.cmd("ip route add default via {}".format(defaultRouteForEth1))
     host2.cmd("ip route add default via {}".format(defaultRouteForEth1))
     host3.cmd("ip route add default via {}".format(defaultRouteForEth2))

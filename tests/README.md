@@ -2,12 +2,23 @@
 
 This folder contains repeatable Mininet CLI tests for the thesis demo.
 
+## Service Chain
+
+Outbound traffic from `h1`/`h2` follows this routing chain:
+
+```text
+h1/h2 -> Router (10.0.0.2) -> Firewall (10.0.0.3) -> TC (10.0.0.5) -> Proxy (10.0.0.10) -> NAT (10.0.0.4)
+```
+
+IDS (`10.0.0.9`) inspects the same `br0` traffic via OVS port mirroring (passive hop).
+
 ## Before Running
 
-Start the Docker services:
+Rebuild NAT/TC after chain fixes:
 
 ```bash
 cd /mnt/c/Users/kkola/Desktop/vnf/sdn-vnf/docker
+docker compose build vnf_nat vnf_tc
 docker compose up -d --build
 ```
 
@@ -15,7 +26,14 @@ Start the topology:
 
 ```bash
 cd /mnt/c/Users/kkola/Desktop/vnf/sdn-vnf
-python3 vnf-topo.py
+sudo python2 vnf-topo.py
+```
+
+Verify the chain inside Mininet:
+
+```text
+mininet> h1 tracepath -n 8.8.8.8
+mininet> h1 curl -v --connect-timeout 10 http://93.184.216.34
 ```
 
 Open IDS logs in another terminal:

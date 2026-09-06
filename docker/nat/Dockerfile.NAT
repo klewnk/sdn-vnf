@@ -1,6 +1,8 @@
 FROM --platform=$BUILDPLATFORM alpine:latest
 
-RUN apk add --no-cache iptables tcpdump
+RUN apk add --no-cache iptables iproute2 tcpdump
 
-ENV NAT_INTF=eth0
-CMD iptables -t nat -A POSTROUTING -o ${NAT_INTF} -j MASQUERADE && /bin/sh
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+CMD ["/entrypoint.sh"]
