@@ -1,8 +1,5 @@
 #!/bin/sh
 
-# Watches WAF nginx access logs and raises IDS alerts when the WAF returns 403
-# for suspicious HTTP requests before they reach the backend web servers.
-
 WAF_LOG_DIR="/waf-logs"
 NGINX_ACCESS_LOG="${WAF_LOG_DIR}/nginx/access.log"
 LAST_EVENT_FILE="/tmp/waf_last_event"

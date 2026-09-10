@@ -1,7 +1,5 @@
 #!/bin/sh
 
-# Watches CoreDNS query logs and raises alerts for suspicious domains.
-
 LOG_FILE="/dns-logs/queries.log"
 RED=$(printf '\033[31m')
 RESET=$(printf '\033[0m')

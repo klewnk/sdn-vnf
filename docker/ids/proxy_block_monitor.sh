@@ -1,9 +1,5 @@
 #!/bin/sh
 
-# Squid is the authoritative source for "blocked by proxy" events. This
-# monitor watches Squid access logs and raises an IDS alarm after repeated
-# HTTP 403/TCP_DENIED responses for each Mininet host.
-
 LOG_FILE="/proxy-logs/access.log"
 THRESHOLD=3
 STATE_FILE="/tmp/proxy_block_counts"

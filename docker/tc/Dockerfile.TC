@@ -4,7 +4,7 @@ RUN apk add --no-cache iproute2 iputils bash
 
 WORKDIR /scripts
 
-COPY tc_rules.sh .
-RUN chmod +x tc_rules.sh
+COPY apply_qos.sh tc_rules.sh .
+RUN chmod +x apply_qos.sh tc_rules.sh
 
 CMD ["./tc_rules.sh"]

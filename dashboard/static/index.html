@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SDN VNF Lab Dashboard</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/styles.css?v=32" />
+    <script src="/app.js?v=30" defer></script>
+  </head>
+  <body>
+    <header>
+      <div>
+        <h1>SDN VNF Lab Dashboard</h1>
+        <p>Run demo scenarios against the virtual network functions.</p>
+      </div>
+      <div class="top-actions">
+        <p id="api-status" class="status">Loading...</p>
+        <button id="start-lab" class="header-button start" type="button">
+          <span class="header-button-icon" aria-hidden="true">▶</span>
+          Start lab
+        </button>
+        <button id="stop-lab" class="header-button danger" type="button">
+          <span class="header-button-icon stop" aria-hidden="true">■</span>
+          Stop lab
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div class="scenario-panel">
+        <nav id="group-nav" class="group-nav"></nav>
+
+        <div class="scenario-content" data-view="home">
+          <div id="welcome-screen" class="welcome-screen">
+            <div class="welcome-hero">
+              <div class="welcome-header">
+                <p class="welcome-eyebrow">Welcome to the</p>
+                <h2 class="welcome-title">SDN VNF Lab <span class="welcome-title-accent">Dashboard</span></h2>
+                <p class="welcome-lead">
+                  Select a VNF from the menu to run its test scenarios
+                </p>
+              </div>
+
+              <div class="welcome-features">
+                <article class="welcome-feature">
+                  <div class="welcome-feature-badge icon-green" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <path d="M12 4l7 4v8l-7 4-7-4V8l7-4z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                      <path d="M12 4v8M5 8l7 4 7-4" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
+                  <div class="welcome-feature-copy">
+                    <h3>10 VNFs</h3>
+                    <p>Network functions</p>
+                  </div>
+                </article>
+                <article class="welcome-feature">
+                  <div class="welcome-feature-badge icon-blue" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <rect x="4" y="5" width="16" height="5" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                      <rect x="6" y="12" width="12" height="7" rx="1.5" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                  </div>
+                  <div class="welcome-feature-copy">
+                    <h3>Docker-based</h3>
+                    <p>Containerized environment</p>
+                  </div>
+                </article>
+                <article class="welcome-feature">
+                  <div class="welcome-feature-badge icon-green" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <circle cx="6" cy="8" r="2.2" stroke="currentColor" stroke-width="2"/>
+                      <circle cx="18" cy="8" r="2.2" stroke="currentColor" stroke-width="2"/>
+                      <circle cx="12" cy="17" r="2.2" stroke="currentColor" stroke-width="2"/>
+                      <path d="M7.6 9.4L10.4 15M16.4 9.4l-2.8 5.6" stroke="currentColor" stroke-width="2"/>
+                    </svg>
+                  </div>
+                  <div class="welcome-feature-copy">
+                    <h3>Mininet + OVS</h3>
+                    <p>Virtual network topology</p>
+                  </div>
+                </article>
+              </div>
+
+              <footer id="lab-status-bar" class="lab-status-bar">
+                <article class="status-card status-card-lab" id="status-lab-card" data-state="checking">
+                  <span class="status-card-icon" aria-hidden="true">
+                    <span class="status-dot" id="status-ready-icon"></span>
+                  </span>
+                  <div class="status-card-body">
+                    <h4 id="status-ready-label">Checking...</h4>
+                    <p class="status-card-line">Lab environment</p>
+                    <p class="status-card-meta" id="status-ready-text">Loading service status...</p>
+                  </div>
+                </article>
+                <article class="status-card">
+                  <span class="status-card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M12 3l8 4.5v7c0 4.2-3.2 7.8-8 8.5-4.8-.7-8-4.3-8-8.5v-7L12 3z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                  </span>
+                  <div class="status-card-body">
+                    <h4>Virtual Topology</h4>
+                    <p class="status-card-line">Mininet + Open vSwitch</p>
+                    <p class="status-card-meta">Multi-subnet setup</p>
+                  </div>
+                </article>
+                <article class="status-card">
+                  <span class="status-card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="5" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="6" y="12" width="12" height="7" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+                  </span>
+                  <div class="status-card-body">
+                    <h4>Containers</h4>
+                    <p class="status-card-line">Docker</p>
+                    <p class="status-card-meta" id="status-containers-text">Checking services...</p>
+                  </div>
+                </article>
+                <article class="status-card">
+                  <span class="status-card-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M4 17V7M8 17v-6M12 17v-4M16 17V9M20 17V5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                  </span>
+                  <div class="status-card-body">
+                    <h4>Monitoring</h4>
+                    <p class="status-card-line">Prometheus + Grafana</p>
+                    <p class="status-card-meta" id="status-monitoring-text">Real-time metrics</p>
+                  </div>
+                </article>
+              </footer>
+            </div>
+          </div>
+
+          <div id="group-content" hidden>
+            <div class="section-heading">
+              <span id="active-group-label">Select VNF</span>
+              <h2 id="active-group-title">VNF Demo Scenarios</h2>
+              <p id="active-group-description">
+                Run one presentation scenario and review the output.
+              </p>
+              <ul id="active-group-info" class="group-info"></ul>
+              <div id="service-status" class="service-status" hidden></div>
+            </div>
+            <div id="cards" class="cards"></div>
+          </div>
+        </div>
+      </div>
+
+      <section class="output">
+        <div class="output-header">
+          <div>
+            <h2>Output</h2>
+            <p id="last-command">No test executed yet</p>
+          </div>
+          <button id="clear-output" class="secondary">Clear</button>
+        </div>
+        <div id="output-box" class="output-idle">
+          <div class="output-placeholder">
+            <div class="output-placeholder-icon" aria-hidden="true">&gt;_</div>
+            <p class="output-placeholder-title">No test executed yet</p>
+            <p class="output-placeholder-text">
+              Select a VNF and run a demo to see the results here.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

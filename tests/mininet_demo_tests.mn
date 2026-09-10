@@ -1,14 +1,15 @@
-# Run this from inside the Mininet CLI:
-# mininet> source tests/mininet_demo_tests.mn
-
 sh echo "===== Basic connectivity ====="
 h1 ping -c 2 10.0.0.100
 h1 ping -c 2 10.0.0.10
 h1 ping -c 2 10.0.0.11
 
-sh echo "===== DNS suspicious query test ====="
+sh echo "===== DNS tests ====="
+h1 nslookup google.com 10.0.0.100
 h1 nslookup phishing.test 10.0.0.100
 h1 nslookup malware.test 10.0.0.100
+
+sh echo "===== FRR Router inter-subnet test ====="
+h1 ping -c 3 10.0.1.3
 
 sh echo "===== Proxy direct block test ====="
 h1 curl -s -o /dev/null -w "proxy block 1: %{http_code}\n" -x http://10.0.0.10:3128 http://facebook.com
@@ -30,7 +31,18 @@ h1 curl -s -o /dev/null -w "cache first request: status=%{http_code} time=%{time
 h1 curl -s -o /dev/null -w "cache second request: status=%{http_code} time=%{time_total}\n" http://10.0.0.30/bigfile.dat
 sh docker logs --tail 5 vnf_cache
 
-sh echo "===== VNF rule validation commands ====="
-sh docker exec vnf_nat iptables -t nat -S
+sh echo "===== NAT outbound chain test ====="
+h1 curl -s -o /dev/null -w "nat outbound: %{http_code}\n" --max-time 10 http://example.com
+sh docker exec vnf_nat iptables -t nat -L POSTROUTING -v -n
+
+sh echo "===== Firewall policy check ====="
 sh docker exec vnf_firewall iptables -S
+sh docker exec vnf_firewall iptables -L FORWARD -v -n
+
+sh echo "===== Traffic Control QoS check ====="
 sh docker exec vnf_tc tc -s qdisc show dev eth1
+h1 curl -s -o /dev/null --max-time 10 http://example.com
+sh docker exec vnf_tc tc -s class show dev eth1
+
+sh echo "===== IDS recent alerts ====="
+sh docker logs --tail 20 vnf_ids

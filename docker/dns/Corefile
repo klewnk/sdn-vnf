@@ -1,6 +1,4 @@
 . {
-	# Use explicit upstream resolvers to avoid Docker DNS loops when Mininet
-	# rewrites the host /etc/resolv.conf to point at this DNS VNF.
 	forward . 8.8.8.8 8.8.4.4
 	log
 	errors 

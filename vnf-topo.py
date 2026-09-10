@@ -5,9 +5,16 @@ from mininet.link import TCLink
 from mininet.cli import CLI
 from mininet.log import setLogLevel, info
 import os
+import pipes
+import time
 
 def shell(cmd):
     return os.popen(cmd).read().strip()
+
+VNF_CONTAINERS = (
+    'vnf_nat', 'vnf_firewall', 'vnf_frr', 'vnf_tc', 'vnf_dns',
+    'vnf_lb', 'vnf_ids', 'vnf_proxy', 'vnf_waf', 'vnf_cache',
+)
 
 def preflightCleanup():
     info('*** Preflight cleanup\n')
@@ -17,6 +24,20 @@ def preflightCleanup():
     os.system('ovs-vsctl --if-exists del-port br1 veth_br1')
     os.system('ip link del veth_mininet 2>/dev/null')
     os.system('ip link del veth_mininet1 2>/dev/null')
+    for name in VNF_CONTAINERS:
+        os.system('ovs-docker del-port br0 eth1 {} 2>/dev/null'.format(name))
+        os.system('ovs-docker del-port br1 eth2 {} 2>/dev/null'.format(name))
+
+def ensureDockerServices():
+    info('*** Checking Docker VNF containers\n')
+    missing = []
+    for name in VNF_CONTAINERS:
+        if not shell('docker ps -q -f name=^{}$'.format(name)):
+            missing.append(name)
+    if missing:
+        info('*** ERROR: Docker containers not running: {}\n'.format(', '.join(missing)))
+        info('*** Run: cd docker && docker compose up -d\n')
+        raise SystemExit(1)
 
 def enableForwarding(container):
     os.system('docker exec {} sysctl -w net.ipv4.ip_forward=1 2>/dev/null'.format(container))
@@ -41,6 +62,54 @@ def setupNatEgress():
     os.system('docker exec vnf_nat iptables -P FORWARD ACCEPT')
     os.system('docker exec vnf_nat iptables -t nat -F')
     os.system('docker exec vnf_nat iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE')
+
+def applyTcQos(iface='eth1', retries=8):
+    """Apply HTB QoS on the TC VNF bridge port. Retries until iface exists."""
+    info('*** Applying TC QoS on vnf_tc {}\n'.format(iface))
+    qos_shell = (
+        'IFACE={iface}; '
+        'ip link set "$IFACE" up 2>/dev/null; '
+        'tc qdisc del dev "$IFACE" root 2>/dev/null; '
+        'tc qdisc add dev "$IFACE" root handle 1: htb default 20 && '
+        'tc class add dev "$IFACE" parent 1: classid 1:1 htb rate 100mbit && '
+        'tc class add dev "$IFACE" parent 1:1 classid 1:10 htb rate 50mbit ceil 100mbit prio 1 && '
+        'tc class add dev "$IFACE" parent 1:1 classid 1:20 htb rate 1mbit ceil 10mbit prio 2 && '
+        'tc filter add dev "$IFACE" protocol ip parent 1:0 prio 1 u32 match ip protocol 1 0xff flowid 1:10 2>/dev/null; '
+        'tc filter add dev "$IFACE" protocol ip parent 1:0 prio 1 u32 match ip dport 80 0xffff flowid 1:10 2>/dev/null; '
+        'tc filter add dev "$IFACE" protocol ip parent 1:0 prio 1 u32 match ip sport 80 0xffff flowid 1:10 2>/dev/null; '
+        'tc filter add dev "$IFACE" protocol ip parent 1:0 prio 1 u32 match ip dport 443 0xffff flowid 1:10 2>/dev/null; '
+        'tc filter add dev "$IFACE" protocol ip parent 1:0 prio 1 u32 match ip sport 443 0xffff flowid 1:10 2>/dev/null; '
+        'tc filter add dev "$IFACE" protocol ip parent 1:0 prio 1 u32 match ip dport 53 0xffff flowid 1:10 2>/dev/null; '
+        'tc qdisc show dev "$IFACE"; '
+        'tc -s class show dev "$IFACE"'
+    ).format(iface=iface)
+
+    for attempt in range(1, retries + 1):
+        if shell('docker exec vnf_tc ip link show {} 2>/dev/null'.format(iface)):
+            break
+        time.sleep(1)
+    else:
+        info('*** WARNING: {} not found in vnf_tc after {}s\n'.format(iface, retries))
+        return False
+
+    result = os.popen(
+        'docker exec vnf_tc sh -c {}'.format(pipes.quote(qos_shell))
+    ).read()
+    out = result or ''
+    if out.strip():
+        info('*** TC QoS output:\n{}\n'.format(out.strip()))
+
+    ok = 'htb' in out.lower()
+    if not ok:
+        info('*** WARNING: TC QoS apply failed, trying script fallback\n')
+        script_out = os.popen('docker exec vnf_tc sh /scripts/apply_qos.sh 2>&1').read()
+        if script_out.strip():
+            info('*** TC QoS script fallback:\n{}\n'.format(script_out.strip()))
+        ok = 'htb' in script_out.lower()
+
+    if ok:
+        info('*** TC QoS active on {}\n'.format(iface))
+    return ok
 
 def setupRouterVnf(router_default_route):
     eth1Ip = '10.0.0.2'
@@ -101,6 +170,8 @@ def setupTCVnf(tc_default_route, prev_vnf_ip):
     subnet2IpRouteCmd = 'ip route add {} via {} dev eth1'.format(subnet2IpRange, subnet2Gateway)
     os.system('docker exec vnf_tc {}'.format(subnet2IpRouteCmd))
     enableForwarding('vnf_tc')
+    time.sleep(1)
+    applyTcQos()
 
     return eth1Ip
 
@@ -131,7 +202,6 @@ def setupIdsVnf():
 
     info('*** Adding Docker IDS (Snort) VNF\n')
     os.system('ovs-docker add-port br0 eth1 vnf_ids --ipaddress={}/24'.format(eth1Ip))
-    # IDS is passive: chain traffic is mirrored from br0, not routed through Snort.
     os.system('docker exec vnf_ids ip route replace default via 10.0.0.2 dev eth1')
 
     return eth1Ip
@@ -208,6 +278,7 @@ def setupCacheVnf():
 def topology():
     setLogLevel('info')
     preflightCleanup()
+    ensureDockerServices()
 
     net = Mininet(controller=Controller, link=TCLink)
 
@@ -230,8 +301,6 @@ def topology():
     info('*** Starting network\n')
     net.start()
 
-    # Service chain (routing): Router -> Firewall -> TC -> Proxy -> NAT
-    # IDS inspects the same br0 traffic via OVS mirror (passive SFC hop).
     setupWafVnf(waf_default_route='10.0.0.8', prev_vnf_ip='10.0.0.10')
     natIp = setupNatVnf(prev_vnf_ip='10.0.0.10')
     proxyIp = setupProxyVnf(proxy_default_route=natIp, prev_vnf_ip='10.0.0.5')
@@ -266,9 +335,6 @@ def topology():
     setupIdsMirror('veth_br0')
     setupHostEgress()
 
-    # Service chain for outbound traffic:
-    # h1/h2 -> router -> firewall -> TC -> proxy -> NAT -> host egress
-    # IDS inspects the same br0 traffic via OVS mirroring.
     host1.cmd("ip route add default via {}".format(defaultRouteForEth1))
     host2.cmd("ip route add default via {}".format(defaultRouteForEth1))
     host3.cmd("ip route add default via {}".format(defaultRouteForEth2))
@@ -277,7 +343,6 @@ def topology():
         host.cmd('unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY')
     
     info('*** Setup DNS on hosts\n')
-    # Mininet hosts share the host filesystem, so configure one reachable DNS VNF.
     host1.cmd('echo nameserver {} > /etc/resolv.conf'.format(dnsIp1))
 
     info('*** Testing network\n')

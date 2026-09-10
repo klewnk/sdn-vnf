@@ -13,8 +13,6 @@ services:
         cap_add:
             - NET_ADMIN
             - NET_RAW
-        sysctls:
-            net.ipv4.ip_forward: "1"
 
     vnf_dns:
         image: vnf_dns:0.0.1
@@ -43,8 +41,6 @@ services:
         cap_add:
             - NET_ADMIN
             - NET_RAW
-        sysctls:
-            net.ipv4.ip_forward: "1"
 
     vnf_frr:
         image: vnf_frr:0.0.1
@@ -60,8 +56,6 @@ services:
         cap_add:
             - NET_ADMIN
             - NET_RAW
-        sysctls:
-            net.ipv4.ip_forward: "1"
 
     vnf_tc:
         image: vnf_tc:latest
@@ -69,13 +63,13 @@ services:
         build:
             context: ./tc
             dockerfile: Dockerfile.TC
+        volumes:
+            - ./tc/apply_qos.sh:/scripts/apply_qos.sh:ro
         stdin_open: true
         tty: true
         cap_add:
             - NET_ADMIN
             - NET_RAW
-        sysctls:
-            net.ipv4.ip_forward: "1"
 
     vnf_lb:
         image: vnf_lb:0.0.1
